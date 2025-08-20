@@ -162,6 +162,7 @@
 #    include <sys/types.h>
 #    include <sys/wait.h>
 #    include <sys/stat.h>
+#    include <sys/sysinfo.h>
 #    include <unistd.h>
 #    include <fcntl.h>
 #endif
@@ -390,6 +391,9 @@ typedef struct {
 } Nob_Cmd_Opt;
 
 NOBDEF bool nob_cmd_run_opt(Nob_Cmd *cmd, Nob_Cmd_Opt opt);
+
+// Get amount of processors on the machine.
+NOBDEF int nob_nprocs(void);
 
 // See https://x.com/vkrajacic/status/1749816169736073295 for more info on how to use such macros
 #define nob_cmd_run(cmd, ...) nob_cmd_run_opt((cmd), (Nob_Cmd_Opt){__VA_ARGS__})
@@ -985,6 +989,17 @@ static void nob__win32_cmd_quote(Nob_Cmd cmd, Nob_String_Builder *quoted)
 }
 #endif
 
+NOBDEF int nob_nprocs(void)
+{
+#ifdef _WIN32
+    SYSTEM_INFO siSysInfo;
+    GetSystemInfo(&siSysInfo);
+    return siSysInfo.dwNumberOfProcessors;
+#else
+    return sysconf(_SC_NPROCESSORS_ONLN);
+#endif
+}
+
 NOBDEF bool nob_cmd_run_opt(Nob_Cmd *cmd, Nob_Cmd_Opt opt)
 {
     Nob_Proc proc = nob_cmd_start_process(*cmd, opt.fdin, opt.fdout, opt.fderr);
@@ -1014,6 +1029,7 @@ NOBDEF bool nob_cmd_run_opt(Nob_Cmd *cmd, Nob_Cmd_Opt opt)
 
     return true;
 }
+
 NOBDEF Nob_Proc nob_cmd_run_async_redirect(Nob_Cmd cmd, Nob_Cmd_Redirect redirect)
 {
     return nob_cmd_start_process(cmd, redirect.fdin, redirect.fdout, redirect.fderr);
@@ -2136,14 +2152,20 @@ NOBDEF int closedir(DIR *dirp)
         #define sv_from_parts nob_sv_from_parts
         #define sb_to_sv nob_sb_to_sv
         #define win32_error_message nob_win32_error_message
+        #define get_procs_number nob_nprocs
     #endif // NOB_STRIP_PREFIX
 #endif // NOB_STRIP_PREFIX_GUARD_
 
 /*
    Revision history:
 
-     1.23.0 (2025-08-15) Add nob_cmd_run(), nob_cmd_run_opt(), nob_cmd_start_process(), Nob_Cmd_Opt and deprecate all other nob_cmd_run_* functions (by @rexim)
+     1.23.0 (2025-08-15) Add nob_cmd_run(),
+                             nob_cmd_run_opt(),
+                             nob_cmd_start_process(),
+                             Nob_Cmd_Opt (by @rexim)
+                         Deprecate all other nob_cmd_run_* functions (by @rexim)
                          Add NOB_DECLTYPE_CAST() for C++-compatible casting of allocation results (by @rexim)
+                         Add nob_nprocs() (by @rexim)
                          Add NOB_DEPRECATED() (by @yuI4140)
      1.22.0 (2025-08-12) Add NOBDEF macro to the beginning of function declarations (by @minefreak19)
                          Add more flags to MSVC nob_cc_flags() (by @PieVieRo)
