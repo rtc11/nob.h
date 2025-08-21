@@ -369,11 +369,19 @@ typedef struct {
 
 // Wait until the process has finished
 NOBDEF bool nob_proc_wait(Nob_Proc proc);
+
 // Wait until all the processes have finished
 NOBDEF bool nob_procs_wait(Nob_Procs procs);
-// Wait until all the processes have finished and empty the procs array
+
+// Wait until all the processes have finished and empty the procs array.
+NOBDEF bool nob_procs_flush(Nob_Procs *procs);
+
+// Alias to nob_procs_flush
+NOB_DEPRECATED("Use `nob_procs_flush(&procs)` instead.")
 NOBDEF bool nob_procs_wait_and_reset(Nob_Procs *procs);
+
 // Append a new process to procs array and if procs.count reaches max_procs_count call nob_procs_wait_and_reset() on it
+NOB_DEPRECATED("Use `nob_cmd_run(&cmd, .async = &procs, .max_procs = <integer>)` instead")
 NOBDEF bool nob_procs_append_with_flush(Nob_Procs *procs, Nob_Proc proc, size_t max_procs_count);
 
 // A command - the main workhorse of Nob. Nob is all about building commands and running them
@@ -383,21 +391,30 @@ typedef struct {
     size_t capacity;
 } Nob_Cmd;
 
+// Options for nob_cmd_run_opt() function.
 typedef struct {
-    bool no_reset;              // Do not reset the cmd array and do not close the stdin, stdout, stderr files
-    Nob_Procs *async;           // Run the command asynchronously appending its Nob_Proc to the provided Nob_Procs array
-    size_t max_procs;           // Maximum processes in the .async list
-    Nob_Fd *fdin;               // Redirect stdin
-    Nob_Fd *fdout;              // Redirect stdout
-    Nob_Fd *fderr;              // Redirect stderr
+    // Do not reset the cmd array and do not close the stdin, stdout, stderr files
+    bool no_reset;
+    // Run the command asynchronously appending its Nob_Proc to the provided Nob_Procs array
+    Nob_Procs *async;
+    // Maximum processes allowed in the .async list. Zero implies nob_nprocs().
+    size_t max_procs;
+    // Redirect stdin
+    Nob_Fd *fdin;
+    // Redirect stdout
+    Nob_Fd *fdout;
+    // Redirect stderr
+    Nob_Fd *fderr;
 } Nob_Cmd_Opt;
 
+// Run the command with options.
 NOBDEF bool nob_cmd_run_opt(Nob_Cmd *cmd, Nob_Cmd_Opt opt);
 
 // Get amount of processors on the machine.
 NOBDEF int nob_nprocs(void);
 
-// See https://x.com/vkrajacic/status/1749816169736073295 for more info on how to use such macros
+// Same as nob_cmd_run_opt but using cool variadic macro to set the default options.
+// See https://x.com/vkrajacic/status/1749816169736073295 for more info on how to use such macros.
 #define nob_cmd_run(cmd, ...) nob_cmd_run_opt((cmd), (Nob_Cmd_Opt){__VA_ARGS__})
 
 // Starts the process for the command. Its main purpose is to be the base for nob_cmd_run() and nob_cmd_run_opt().
@@ -1264,11 +1281,16 @@ NOBDEF bool nob_procs_wait(Nob_Procs procs)
     return success;
 }
 
-NOBDEF bool nob_procs_wait_and_reset(Nob_Procs *procs)
+NOBDEF bool nob_procs_flush(Nob_Procs *procs)
 {
     bool success = nob_procs_wait(*procs);
     procs->count = 0;
     return success;
+}
+
+NOBDEF bool nob_procs_wait_and_reset(Nob_Procs *procs)
+{
+    return nob_procs_flush(procs);
 }
 
 NOBDEF bool nob_proc_wait(Nob_Proc proc)
@@ -1394,7 +1416,7 @@ NOBDEF bool nob_procs_append_with_flush(Nob_Procs *procs, Nob_Proc proc, size_t 
     nob_da_append(procs, proc);
 
     if (procs->count >= max_procs_count) {
-        if (!nob_procs_wait_and_reset(procs)) return false;
+        if (!nob_procs_flush(procs)) return false;
     }
 
     return true;
@@ -2189,6 +2211,7 @@ NOBDEF int closedir(DIR *dirp)
         #define procs_wait nob_procs_wait
         #define procs_wait_and_reset nob_procs_wait_and_reset
         #define procs_append_with_flush nob_procs_append_with_flush
+        #define procs_flush nob_procs_flush
         #define Cmd Nob_Cmd
         #define Cmd_Redirect Nob_Cmd_Redirect
         #define Cmd_Opt Nob_Cmd_Opt
@@ -2245,8 +2268,11 @@ NOBDEF int closedir(DIR *dirp)
      1.23.0 (2025-08-15) Add nob_cmd_run(),
                              nob_cmd_run_opt(),
                              nob_cmd_start_process(),
-                             Nob_Cmd_Opt (by @rexim)
+                             Nob_Cmd_Opt,
+                             nob_procs_flush() (by @rexim)
                          Deprecate all other nob_cmd_run_* functions (by @rexim)
+                         Deprecate nob_procs_append_with_flush()
+                                   nob_procs_wait_and_reset() (by @rexim)
                          Add NOB_DECLTYPE_CAST() for C++-compatible casting of allocation results (by @rexim)
                          Add nob_nprocs() (by @rexim)
                          Add NOB_DEPRECATED() (by @yuI4140)

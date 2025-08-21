@@ -3,6 +3,7 @@
 #define NOB_IMPLEMENTATION
 #define NOB_STRIP_PREFIX
 #define NOB_EXPERIMENTAL_DELETE_OLD
+#define NOB_WARN_DEPRECATED
 #include "../nob.h"
 
 const char *examples[] = {

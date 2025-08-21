@@ -1,5 +1,6 @@
 #define NOB_IMPLEMENTATION
 #define NOB_STRIP_PREFIX
+#define NOB_WARN_DEPRECATED
 #include "nob.h"
 
 #define BUILD_FOLDER "build/"
@@ -33,10 +34,10 @@ int main(int argc, char **argv)
     nob_cc_inputs(&cmd, SRC_FOLDER"baz.c");
     if (!cmd_run(&cmd, .async = &procs)) return 1;
 
-    // Wait on all the async processes to finish
-    if (!procs_wait_and_reset(&procs)) return 1;
+    // Wait on all the async processes to finish and reset procs dynamic array to 0
+    if (!procs_flush(&procs)) return 1;
 
-    // TODO: add some examples with nob_procs_append_with_flush()
+    // TODO: add some examples with .max_procs
 
     return 0;
 }
