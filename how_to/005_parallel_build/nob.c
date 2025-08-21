@@ -15,24 +15,23 @@ int main(int argc, char **argv)
 
     if (!mkdir_if_not_exists(BUILD_FOLDER)) return 1;
 
-    // Spawn three async processes collecting them to procs dynamic array
-    nob_cc(&cmd);
-    nob_cc_flags(&cmd);
-    nob_cc_output(&cmd, BUILD_FOLDER"foo");
-    nob_cc_inputs(&cmd, SRC_FOLDER"foo.c");
-    if (!cmd_run(&cmd, .async = &procs)) return 1;
+    static struct {
+        const char *bin_path;
+        const char *src_path;
+    } targets[] = {
+        { .bin_path = BUILD_FOLDER"foo", .src_path = SRC_FOLDER"foo.c" },
+        { .bin_path = BUILD_FOLDER"bar", .src_path = SRC_FOLDER"bar.c" },
+        { .bin_path = BUILD_FOLDER"baz", .src_path = SRC_FOLDER"baz.c" },
+    };
 
-    nob_cc(&cmd);
-    nob_cc_flags(&cmd);
-    nob_cc_output(&cmd, BUILD_FOLDER"bar");
-    nob_cc_inputs(&cmd, SRC_FOLDER"bar.c");
-    if (!cmd_run(&cmd, .async = &procs)) return 1;
-
-    nob_cc(&cmd);
-    nob_cc_flags(&cmd);
-    nob_cc_output(&cmd, BUILD_FOLDER"baz");
-    nob_cc_inputs(&cmd, SRC_FOLDER"baz.c");
-    if (!cmd_run(&cmd, .async = &procs)) return 1;
+    // Spawn one async process per target collecting them to procs dynamic array
+    for (size_t i = 0; i < ARRAY_LEN(targets); ++i) {
+        nob_cc(&cmd);
+        nob_cc_flags(&cmd);
+        nob_cc_output(&cmd, targets[i].bin_path);
+        nob_cc_inputs(&cmd, targets[i].src_path);
+        if (!cmd_run(&cmd, .async = &procs)) return 1;
+    }
 
     // Wait on all the async processes to finish and reset procs dynamic array to 0
     if (!procs_flush(&procs)) return 1;

@@ -39,11 +39,8 @@ int main(void)
     message = "Hello, World";
     message_file_path = "./echo_message.txt";
 
-    fdout = fd_open_for_write(message_file_path);
-    if (fdout == INVALID_FD) return_defer(1);
-
     cmd_append(&cmd, "./echo", message);
-    if (!cmd_run(&cmd, .fdout = &fdout)) return_defer(1);
+    if (!cmd_run(&cmd, .stdout_path = message_file_path)) return_defer(1);
 
     if (!read_entire_file(message_file_path, &sb)) return_defer(1);
     actual_message = sb_to_sv(sb);

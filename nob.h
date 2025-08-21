@@ -393,18 +393,16 @@ typedef struct {
 
 // Options for nob_cmd_run_opt() function.
 typedef struct {
-    // Do not reset the cmd array and do not close the stdin, stdout, stderr files
-    bool no_reset;
     // Run the command asynchronously appending its Nob_Proc to the provided Nob_Procs array
     Nob_Procs *async;
     // Maximum processes allowed in the .async list. Zero implies nob_nprocs().
     size_t max_procs;
-    // Redirect stdin
-    Nob_Fd *fdin;
-    // Redirect stdout
-    Nob_Fd *fdout;
-    // Redirect stderr
-    Nob_Fd *fderr;
+    // Redirect stdin to file
+    const char *stdin_path;
+    // Redirect stdout to file
+    const char *stdout_path;
+    // Redirect stderr to file
+    const char *stderr_path;
 } Nob_Cmd_Opt;
 
 // Run the command with options.
@@ -438,16 +436,12 @@ NOBDEF Nob_Proc nob_cmd_start_process(Nob_Cmd cmd, Nob_Fd *fdin, Nob_Fd *fdout, 
 // })) fail();
 // ```
 //
-// But these days you should do everything through nob_cmd_run:
+// But these days you should do:
 //
 // ```c
-// Nob_Fd fdin = nob_fd_open_for_read("input.txt");
-// if (fdin == NOB_INVALID_FD) fail();
-// Nob_Fd fdout = nob_fd_open_for_write("output.txt");
-// if (fdout == NOB_INVALID_FD) fail();
 // Nob_Cmd cmd = {0};
 // nob_cmd_append(&cmd, "cat");
-// if (!nob_cmd_run(&cmd, .stdin = &fdin, .stdout = &fdout)) fail();
+// if (!nob_cmd_run(&cmd, .stdin_path = "input.txt", .stdout_path = "output.txt")) fail();
 // ```
 typedef struct {
     Nob_Fd *fdin;
@@ -473,33 +467,34 @@ NOBDEF void nob_cmd_render(Nob_Cmd cmd, Nob_String_Builder *render);
 #define nob_cmd_free(cmd) NOB_FREE(cmd.items)
 
 // Run command asynchronously
-NOB_DEPRECATED("Use `nob_cmd_run(&cmd, .async = &procs, .no_reset = true)` instead.")
+NOB_DEPRECATED("Use `nob_cmd_run(&cmd, .async = &procs)` instead, but keep in mind that it always resets the cmd array.")
 NOBDEF Nob_Proc nob_cmd_run_async(Nob_Cmd cmd);
 
 // nob_cmd_run_async_and_reset() is just like nob_cmd_run_async() except it also resets cmd.count to 0
 // so the Nob_Cmd instance can be seamlessly used several times in a row
-NOB_DEPRECATED("Use `nob_cmd_run(&cmd, .async = &procs)` intead")
+NOB_DEPRECATED("Use `nob_cmd_run(&cmd, .async = &procs)` intead.")
 NOBDEF Nob_Proc nob_cmd_run_async_and_reset(Nob_Cmd *cmd);
 
 // Run redirected command asynchronously
 NOB_DEPRECATED("Use `nob_cmd_run(&cmd, "
                ".async = &procs, "
-               ".stdin = &fdin, "
-               ".stdout = &fdout, "
-               ".stderr = &fderr, "
-               ".no_reset = true)` instead")
+               ".stdin_path = \"path/to/stdin\", "
+               ".stdout_path = \"path/to/stdout\", "
+               ".stderr_path = \"path/to/stderr\")` instead, "
+               "but keep in mind that it always resets the cmd array.")
 NOBDEF Nob_Proc nob_cmd_run_async_redirect(Nob_Cmd cmd, Nob_Cmd_Redirect redirect);
 
 // Run redirected command asynchronously and set cmd.count to 0 and close all the opened files
 NOB_DEPRECATED("Use `nob_cmd_run(&cmd, "
                ".async = &procs, "
-               ".stdin = &fdin, "
-               ".stdout = &fdout, "
-               ".stderr = &fderr)` instead.")
+               ".stdin_path = \"path/to/stdin\", "
+               ".stdout_path = \"path/to/stdout\", "
+               ".stderr_path = \"path/to/stderr\")` instead.")
 NOBDEF Nob_Proc nob_cmd_run_async_redirect_and_reset(Nob_Cmd *cmd, Nob_Cmd_Redirect redirect);
 
 // Run command synchronously
-NOB_DEPRECATED("Use `nob_cmd_run(&cmd, .no_reset = true)` instead")
+NOB_DEPRECATED("Use `nob_cmd_run(&cmd)` instead, "
+               "but keep in mind that it always resets the cmd array.")
 NOBDEF bool nob_cmd_run_sync(Nob_Cmd cmd);
 
 // NOTE: nob_cmd_run_sync_and_reset() is just like nob_cmd_run_sync() except it also resets cmd.count to 0
@@ -509,17 +504,17 @@ NOBDEF bool nob_cmd_run_sync_and_reset(Nob_Cmd *cmd);
 
 // Run redirected command synchronously
 NOB_DEPRECATED("Use `nob_cmd_run(&cmd, "
-               ".stdin = &fdin, "
-               ".stdout = &fdout, "
-               ".stderr = &fderr, "
-               ".no_reset = true)` instead.")
+               ".stdin_path  = \"path/to/stdin\", "
+               ".stdout_path = \"path/to/stdout\", "
+               ".stderr_path = \"path/to/stderr\")` instead, "
+               "but keep in mind that it always resets the cmd array.")
 NOBDEF bool nob_cmd_run_sync_redirect(Nob_Cmd cmd, Nob_Cmd_Redirect redirect);
 
 // Run redirected command synchronously and set cmd.count to 0 and close all the opened files
-NOB_DEPRECATED("Use nob_cmd_run(&cmd, "
-               ".stdin = &fdin, "
-               ".stdout = &fdout, "
-               ".stderr = &fderr); instead.")
+NOB_DEPRECATED("Use `nob_cmd_run(&cmd, "
+               ".stdin_path = \"path/to/stdin\", "
+               ".stdout_path = \"path/to/stdout\", "
+               ".stderr_path = \"path/to/stderr\")` instead.")
 NOBDEF bool nob_cmd_run_sync_redirect_and_reset(Nob_Cmd *cmd, Nob_Cmd_Redirect redirect);
 
 #ifndef NOB_TEMP_CAPACITY
@@ -1026,13 +1021,21 @@ NOBDEF int nob_nprocs(void)
 
 NOBDEF bool nob_cmd_run_opt(Nob_Cmd *cmd, Nob_Cmd_Opt opt)
 {
+    bool result = true;
+    Nob_Fd fdin  = NOB_INVALID_FD;
+    Nob_Fd fdout = NOB_INVALID_FD;
+    Nob_Fd fderr = NOB_INVALID_FD;
+    Nob_Fd *opt_fdin  = NULL;
+    Nob_Fd *opt_fdout = NULL;
+    Nob_Fd *opt_fderr = NULL;
+
     size_t max_procs = opt.max_procs > 0 ? opt.max_procs : (size_t) nob_nprocs() + 1;
 
     if (opt.async && max_procs > 0) {
         while (opt.async->count >= max_procs) {
             for (size_t i = 0; i < opt.async->count; ++i) {
                 int ret = nob__proc_wait_async(opt.async->items[i], 1);
-                if (ret < 0) return false;
+                if (ret < 0) nob_return_defer(false);
                 if (ret) {
                     nob_da_remove_unordered(opt.async, i);
                     break;
@@ -1041,32 +1044,36 @@ NOBDEF bool nob_cmd_run_opt(Nob_Cmd *cmd, Nob_Cmd_Opt opt)
         }
     }
 
-    Nob_Proc proc = nob_cmd_start_process(*cmd, opt.fdin, opt.fdout, opt.fderr);
-
-    if (!opt.no_reset) {
-        cmd->count = 0;
-        if (opt.fdin) {
-            nob_fd_close(*opt.fdin);
-            *opt.fdin = NOB_INVALID_FD;
-        }
-        if (opt.fdout) {
-            nob_fd_close(*opt.fdout);
-            *opt.fdout = NOB_INVALID_FD;
-        }
-        if (opt.fderr) {
-            nob_fd_close(*opt.fderr);
-            *opt.fderr = NOB_INVALID_FD;
-        }
+    if (opt.stdin_path) {
+        fdin = nob_fd_open_for_read(opt.stdin_path);
+        if (fdin == NOB_INVALID_FD) nob_return_defer(false);
+        opt_fdin = &fdin;
     }
+    if (opt.stdout_path) {
+        fdout = nob_fd_open_for_write(opt.stdout_path);
+        if (fdout == NOB_INVALID_FD) nob_return_defer(false);
+        opt_fdout = &fdout;
+    }
+    if (opt.stderr_path) {
+        fderr = nob_fd_open_for_write(opt.stderr_path);
+        if (fderr == NOB_INVALID_FD) nob_return_defer(false);
+        opt_fderr = &fderr;
+    }
+    Nob_Proc proc = nob_cmd_start_process(*cmd, opt_fdin, opt_fdout, opt_fderr);
 
     if (opt.async) {
-        if (proc == NOB_INVALID_PROC) return false;
+        if (proc == NOB_INVALID_PROC) nob_return_defer(false);
         nob_da_append(opt.async, proc);
     } else {
-        if (!nob_proc_wait(proc)) return false;
+        if (!nob_proc_wait(proc)) nob_return_defer(false);
     }
 
-    return true;
+defer:
+    if (opt_fdin)  nob_fd_close(*opt_fdin);
+    if (opt_fdout) nob_fd_close(*opt_fdout);
+    if (opt_fderr) nob_fd_close(*opt_fderr);
+    cmd->count = 0;
+    return result;
 }
 
 NOBDEF Nob_Proc nob_cmd_run_async_redirect(Nob_Cmd cmd, Nob_Cmd_Redirect redirect)
