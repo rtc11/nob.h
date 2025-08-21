@@ -415,10 +415,6 @@ NOBDEF int nob_nprocs(void);
 // See https://x.com/vkrajacic/status/1749816169736073295 for more info on how to use such macros.
 #define nob_cmd_run(cmd, ...) nob_cmd_run_opt((cmd), (Nob_Cmd_Opt){__VA_ARGS__})
 
-// Starts the process for the command. Its main purpose is to be the base for nob_cmd_run() and nob_cmd_run_opt().
-// It's generally not recommended to call this function directly. Use nob_cmd_run() and nob_cmd_run_opt() instead.
-NOBDEF Nob_Proc nob_cmd_start_process(Nob_Cmd cmd, Nob_Fd *fdin, Nob_Fd *fdout, Nob_Fd *fderr);
-
 // DEPRECATED:
 //
 // You were suppose to use this structure like this:
@@ -767,6 +763,9 @@ NOBDEF char *nob_win32_error_message(DWORD err);
 // so to not peg the core too much. Since this API is kinda of weird, the function is private for now.
 static int nob__proc_wait_async(Nob_Proc proc, int ms);
 
+// Starts the process for the command. Its main purpose is to be the base for nob_cmd_run() and nob_cmd_run_opt().
+static Nob_Proc nob__cmd_start_process(Nob_Cmd cmd, Nob_Fd *fdin, Nob_Fd *fdout, Nob_Fd *fderr);
+
 // Any messages with the level below nob_minimal_log_level are going to be suppressed.
 Nob_Log_Level nob_minimal_log_level = NOB_INFO;
 
@@ -1059,7 +1058,7 @@ NOBDEF bool nob_cmd_run_opt(Nob_Cmd *cmd, Nob_Cmd_Opt opt)
         if (fderr == NOB_INVALID_FD) nob_return_defer(false);
         opt_fderr = &fderr;
     }
-    Nob_Proc proc = nob_cmd_start_process(*cmd, opt_fdin, opt_fdout, opt_fderr);
+    Nob_Proc proc = nob__cmd_start_process(*cmd, opt_fdin, opt_fdout, opt_fderr);
 
     if (opt.async) {
         if (proc == NOB_INVALID_PROC) nob_return_defer(false);
@@ -1078,10 +1077,10 @@ defer:
 
 NOBDEF Nob_Proc nob_cmd_run_async_redirect(Nob_Cmd cmd, Nob_Cmd_Redirect redirect)
 {
-    return nob_cmd_start_process(cmd, redirect.fdin, redirect.fdout, redirect.fderr);
+    return nob__cmd_start_process(cmd, redirect.fdin, redirect.fdout, redirect.fderr);
 }
 
-NOBDEF Nob_Proc nob_cmd_start_process(Nob_Cmd cmd, Nob_Fd *fdin, Nob_Fd *fdout, Nob_Fd *fderr)
+static Nob_Proc nob__cmd_start_process(Nob_Cmd cmd, Nob_Fd *fdin, Nob_Fd *fdout, Nob_Fd *fderr)
 {
     if (cmd.count < 1) {
         nob_log(NOB_ERROR, "Could not run empty command");
@@ -1173,19 +1172,19 @@ NOBDEF Nob_Proc nob_cmd_start_process(Nob_Cmd cmd, Nob_Fd *fdin, Nob_Fd *fdout, 
 
 NOBDEF Nob_Proc nob_cmd_run_async(Nob_Cmd cmd)
 {
-    return nob_cmd_start_process(cmd, NULL, NULL, NULL);
+    return nob__cmd_start_process(cmd, NULL, NULL, NULL);
 }
 
 NOBDEF Nob_Proc nob_cmd_run_async_and_reset(Nob_Cmd *cmd)
 {
-    Nob_Proc proc = nob_cmd_start_process(*cmd, NULL, NULL, NULL);
+    Nob_Proc proc = nob__cmd_start_process(*cmd, NULL, NULL, NULL);
     cmd->count = 0;
     return proc;
 }
 
 NOBDEF Nob_Proc nob_cmd_run_async_redirect_and_reset(Nob_Cmd *cmd, Nob_Cmd_Redirect redirect)
 {
-    Nob_Proc proc = nob_cmd_start_process(*cmd, redirect.fdin, redirect.fdout, redirect.fderr);
+    Nob_Proc proc = nob__cmd_start_process(*cmd, redirect.fdin, redirect.fdout, redirect.fderr);
     cmd->count = 0;
     if (redirect.fdin) {
         nob_fd_close(*redirect.fdin);
@@ -1431,26 +1430,26 @@ NOBDEF bool nob_procs_append_with_flush(Nob_Procs *procs, Nob_Proc proc, size_t 
 
 NOBDEF bool nob_cmd_run_sync_redirect(Nob_Cmd cmd, Nob_Cmd_Redirect redirect)
 {
-    Nob_Proc p = nob_cmd_start_process(cmd, redirect.fdin, redirect.fdout, redirect.fderr);
+    Nob_Proc p = nob__cmd_start_process(cmd, redirect.fdin, redirect.fdout, redirect.fderr);
     return nob_proc_wait(p);
 }
 
 NOBDEF bool nob_cmd_run_sync(Nob_Cmd cmd)
 {
-    Nob_Proc p = nob_cmd_start_process(cmd, NULL, NULL, NULL);
+    Nob_Proc p = nob__cmd_start_process(cmd, NULL, NULL, NULL);
     return nob_proc_wait(p);
 }
 
 NOBDEF bool nob_cmd_run_sync_and_reset(Nob_Cmd *cmd)
 {
-    Nob_Proc p = nob_cmd_start_process(*cmd, NULL, NULL, NULL);
+    Nob_Proc p = nob__cmd_start_process(*cmd, NULL, NULL, NULL);
     cmd->count = 0;
     return nob_proc_wait(p);
 }
 
 NOBDEF bool nob_cmd_run_sync_redirect_and_reset(Nob_Cmd *cmd, Nob_Cmd_Redirect redirect)
 {
-    Nob_Proc p = nob_cmd_start_process(*cmd, redirect.fdin, redirect.fdout, redirect.fderr);
+    Nob_Proc p = nob__cmd_start_process(*cmd, redirect.fdin, redirect.fdout, redirect.fderr);
     cmd->count = 0;
     if (redirect.fdin) {
         nob_fd_close(*redirect.fdin);
@@ -2224,7 +2223,6 @@ NOBDEF int closedir(DIR *dirp)
         #define Cmd_Opt Nob_Cmd_Opt
         #define cmd_run_opt nob_cmd_run_opt
         #define cmd_run nob_cmd_run
-        #define cmd_start_process nob_cmd_start_process
         #define cmd_render nob_cmd_render
         #define cmd_append nob_cmd_append
         #define cmd_extend nob_cmd_extend
@@ -2274,7 +2272,6 @@ NOBDEF int closedir(DIR *dirp)
 
      1.23.0 (2025-08-15) Add nob_cmd_run(),
                              nob_cmd_run_opt(),
-                             nob_cmd_start_process(),
                              Nob_Cmd_Opt,
                              nob_procs_flush() (by @rexim)
                          Deprecate all other nob_cmd_run_* functions (by @rexim)
